@@ -53,7 +53,21 @@ make test-picotest    # TLB/MMU/异常测试（14 个用例）
 
 ### 4. 全仿真（需要 CPU RTL）
 
-将被测 CPU 的 Verilog 代码放入 `rtl/` 目录，顶层模块名为 `CPU`：
+将被测 CPU 的 Verilog 代码放入 `rtl/` 目录，顶层模块名为 `CPU`。
+
+**使用 Zircon（本框架已验证的参考 CPU）：**
+
+```bash
+# Zircon 是框架配套的 LA32R 四发射乱序处理器（Chisel 实现）
+git clone -b la32rsim-2026 https://github.com/MAdrid1011/Zircon.git
+cd Zircon
+make verilog           # 使用 sbt 生成 Verilog（需要 Java + sbt）
+cp verilog/*.sv ../rtl/
+cp verilog/*.f  ../rtl/
+cd ..
+```
+
+**使用其他 CPU：**
 
 ```bash
 cp path/to/your/CPU.sv rtl/          # 顶层模块必须命名为 CPU
