@@ -1,0 +1,193 @@
+mainmenu "LA32RSim-2026 仿真框架配置"
+
+menu "目标 CPU 设置"
+
+config NCOMMIT
+    int "提交端口数量 (1/2/4)"
+    default 2
+    help
+      处理器每周期最多提交的指令数，即顶层接口中 io_cmt_N_* 的数量 N。
+      支持 1、2、4 三种配置，请与被测 CPU 顶层接口保持一致。
+
+config TLB_SIZE
+    int "TLB 表项数量"
+    default 16
+    help
+      被测 CPU 的 TLB 表项数量。LA32R 架构规范不强制规定此数量，
+      参考模拟器（ref-sim / simulator.so）将分配相同大小的 TLB。
+      请与 CPU RTL 中实际实现的 TLB 表项数一致；常见值为 16 或 32。
+
+      启用 DIFFTEST_TLBFILL_SYNC 时此参数尤为重要，因为 tlbfill
+      填写的目标槽位由 CPU 决定，同步机制会将该索引告知参考模拟器。
+
+config DIFFTEST_TLBFILL_SYNC
+    bool "启用 TLBFILL 索引同步"
+    default y
+    help
+      tlbfill 指令在 CPU 中以伪随机方式选择填写的 TLB 表项（通常取
+      稳定计数器低位）。若不同步，参考模拟器使用自己的顺序索引，
+      会导致 tlbfill 后的 tlbrd/csrrd TLBEHI 等操作产生不一致。
+
+      开启后，CPU 需通过顶层接口额外输出两个信号：
+        io_cmt_tlbfill_valid  (1 bit)  — 本周期是否有 tlbfill 提交
+        io_cmt_tlbfill_idx    (N bits) — tlbfill 实际写入的 TLB 槽位号
+      （N = log2(TLB_SIZE)，例如 TLB_SIZE=16 时 N=4）
+
+      仿真主程序在检测到上述信号后，会在参考模拟器执行前调用
+      difftest_tlbfill_index_sync() 通知参考模型使用相同槽位。
+
+config RESET_VECTOR
+    hex "复位向量（Reset Vector）"
+    default 0x1c000000
+    help
+      CPU 上电后 PC 的初始值，LA32R 标准为 0x1c000000。
+
+endmenu
+
+menu "内存接口"
+
+choice MEM_TYPE
+    prompt "内存接口类型"
+    default MEM_AXI
+
+config MEM_AXI
+    bool "AXI4 总线接口"
+    help
+      使用 AXI4 协议连接 CPU 与仿真内存。
+      支持突发传输（burst）和随机背压（random back-pressure）。
+
+config MEM_SIMPLE
+    bool "简单单周期总线接口"
+    help
+      使用简单握手总线（valid/ready + addr/wdata/wstrb/rdata），
+      每次访问单周期完成，适合简单流水线验证。
+
+endchoice
+
+config MEM_AXI_BACKPRESSURE
+    bool "AXI 随机背压（back-pressure）"
+    depends on MEM_AXI
+    default n
+    help
+      随机拉低 arready/rready/awready/wready/bready，
+      压力测试 CPU AXI 握手逻辑的正确性。
+
+config MEM_SIZE_MB
+    int "仿真内存大小（MB）"
+    default 128
+    help
+      仿真物理内存大小，单位 MB。
+
+config MEM_BASE
+    hex "物理内存基地址"
+    default 0x1c000000
+    help
+      仿真物理内存起始地址，与链接脚本保持一致。
+
+endmenu
+
+menu "Difftest 差分测试"
+
+config DIFFTEST
+    bool "启用 Difftest"
+    default y
+    help
+      开启后，每条提交指令都会与参考模拟器 simulator.so 进行比较。
+      关闭后仅运行 DUT，不加载参考库。
+
+config DIFFTEST_FULL_RF
+    bool "每次提交比较全部32个架构寄存器"
+    depends on DIFFTEST
+    default y
+    help
+      开启后，每次 commit 都对32个架构寄存器全量比较（推荐）。
+      关闭后仅比较被写入的那个目标寄存器（速度更快但覆盖不完整）。
+
+config REF_SO_PATH
+    string "参考模拟器 .so 路径（留空则自动使用 build/simulator.so）"
+    depends on DIFFTEST
+    default ""
+
+config REF_STANDALONE
+    bool "同时构建独立参考可执行文件 (ref-sim)"
+    default y
+    help
+      除共享库外，还编译可独立运行的 build/ref-sim，
+      可用于单独执行测试程序、验证程序正确性。
+
+endmenu
+
+menu "调试与追踪"
+
+config ITRACE
+    bool "指令执行追踪（ITRACE）"
+    default y
+    help
+      维护一个环形缓冲区，记录最近执行的指令（PC、指令编码、反汇编、写入值）。
+      仿真失败时自动打印缓冲区内容，帮助定位问题。
+
+config ITRACE_SIZE
+    int "ITRACE 环形缓冲区大小（条）"
+    depends on ITRACE
+    default 32
+
+config MTRACE
+    bool "内存访问追踪（MTRACE）"
+    default n
+    help
+      记录每次内存读写：地址、数据、字节使能、来源 PC、周期号。
+      输出较多，建议仅在调试内存相关问题时开启。
+
+config MEM_WTRACE
+    bool "内存写入时间戳追踪（MEM_WTRACE）"
+    default y
+    help
+      以字节粒度为每个内存字节维护「最后一次写入周期」表。
+      例如一条 st.w 写入4字节，这4字节均记录该条指令所在周期。
+      Difftest 失败时可查询某地址是哪个周期写入的，辅助定位问题。
+
+config DUMP_WAVE
+    bool "生成 VCD 波形文件"
+    default n
+    help
+      使用 Verilator --trace 捕获波形到 build/waveform.vcd。
+      文件可能很大，建议配合 WAVE_BEGIN/WAVE_END 限制范围。
+
+config WAVE_BEGIN
+    int "开始录制波形的周期号"
+    depends on DUMP_WAVE
+    default 0
+
+config WAVE_END
+    int "停止录制波形的周期号（0 表示不限制）"
+    depends on DUMP_WAVE
+    default 0
+
+config DEBUG_COLORS
+    bool "彩色终端输出"
+    default y
+    help
+      使用 ANSI 转义码为输出添加颜色，Good Trap 绿色，Bad Trap/错误红色。
+
+config UART_STDOUT
+    bool "MMIO UART 输出到 stdout"
+    default y
+    help
+      将 UART MMIO 写操作的字符直接打印到终端，模拟串口输出。
+
+endmenu
+
+menu "仿真控制"
+
+config MAX_STEPS
+    int "最大仿真周期数（0 表示不限制）"
+    default 0
+
+config STALL_TIMEOUT
+    int "无提交超时周期数"
+    default 5000
+    help
+      连续 N 个周期没有任何指令提交，则认为处理器死锁，终止仿真。
+      设为 0 禁用此检测。
+
+endmenu

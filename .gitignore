@@ -39,3 +39,17 @@
 
 # debug information files
 *.dwo
+
+# LA32RSim-2026 构建产物
+build/
+include/generated/
+.config
+*.vcd
+waveform.vcd
+
+# RTL 目录（用户自行放置，不纳入版本控制）
+rtl/*.sv
+rtl/*.v
+rtl/*.f
+!rtl/.gitkeep
+!rtl/README.md
