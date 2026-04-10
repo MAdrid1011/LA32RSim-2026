@@ -53,3 +53,13 @@ rtl/*.v
 rtl/*.f
 !rtl/.gitkeep
 !rtl/README.md
+
+.metals/
+.scala-build/
+.vscode
+
+# CPU 源码目录（用户自行 clone，不纳入框架版本控制）
+# 使用 make gen-rtl 或 make verilog 生成后放到 rtl/
+Zircon/
+LA32R-SIM/
+ZirconSim/
