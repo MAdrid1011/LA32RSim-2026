@@ -46,10 +46,11 @@ make menuconfig   # 图形化配置（推荐）
 make test-all
 
 # 或单独运行某套
-make test-functest    # 35 个功能单元测试
-make test-coremark    # CoreMark 基准测试
-make test-dhrystone   # Dhrystone 基准测试
-make test-picotest    # TLB/MMU/异常测试（14 个用例）
+cd software
+make -C functest/ test    # 35 个功能单元测试
+make -C coremark/ test    # CoreMark 基准测试
+make -C dhrystone/ test   # Dhrystone 基准测试
+make -C picotest/ test    # TLB/MMU/异常测试（14 个用例）
 ```
 
 ### 4. 全仿真（需要 CPU RTL）
