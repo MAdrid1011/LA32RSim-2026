@@ -25,10 +25,11 @@ sudo apt-get install verilator python3-pip
 pip3 install kconfiglib
 ```
 
-龙芯交叉编译工具链（编译测试软件用）：
+下载龙芯交叉编译工具链（编译测试软件用）：
 
 ```
-/opt/loongson-gnu-toolchain-8.3-x86_64-loongarch32r-linux-gnusf-v2.0/bin/
+wget https://gitee.com/loongson-edu/la32r-toolchains/releases/download/v0.0.3/loongson-gnu-toolchain-8.3-x86_64-loongarch32r-linux-gnusf-v2.0.tar.xz
+sudo tar -xJvf loongson-gnu-toolchain-8.3-x86_64-loongarch32r-linux-gnusf-v2.0.tar.xz -C /opt
 ```
 
 ### 2. 配置
