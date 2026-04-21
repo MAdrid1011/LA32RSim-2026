@@ -99,6 +99,28 @@ private:
 };
 #endif
 
+// ── 哈佛分离双端口内存（io_imem_* + io_dmem_*，变宽 64-bit） ─────────────────
+#ifdef CONFIG_MEM_HARVARD
+class HarvardMemory : public MemoryBase {
+public:
+    HarvardMemory();
+    void write(VCPU* cpu, uint64_t cycle) override;
+    void read (VCPU* cpu, uint64_t cycle) override;
+    void loadImage(const char* path) override;
+    PMemMap& getMemRef() override { return pmem; }
+    uint32_t debugRead(uint32_t addr) const override;
+
+private:
+    PMemMap pmem;
+    uint32_t pmemRead (uint32_t addr, int bytes) const;
+    void     pmemWrite(uint32_t addr, uint32_t data, uint8_t wmask, uint64_t cycle);
+    // 读出最多 8 个字节（按 bytes ∈ {1,2,4,8} 返回，高位补零）
+    // 非 const：mmioRead 可能带副作用
+    uint64_t readWide (uint32_t addr, int bytes);
+    void     writeWide(uint32_t addr, uint64_t data, uint8_t wstrb, uint64_t cycle);
+};
+#endif
+
 // ── AXI 内存 ──────────────────────────────────────────────────────────────────
 #ifdef CONFIG_MEM_AXI
 class AXIMemory : public MemoryBase {

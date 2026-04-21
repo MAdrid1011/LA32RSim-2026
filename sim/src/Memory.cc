@@ -147,6 +147,125 @@ void SimpleMemory::read(VCPU* cpu, uint64_t cycle) {
 #endif // CONFIG_MEM_SIMPLE
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// 哈佛分离双端口内存实现（CONFIG_MEM_HARVARD）
+//   io_imem_*  : 只读指令端口，固定 8 字节返回（64-bit rdata）
+//   io_dmem_*  : 读写数据端口，变 size ∈ {1,2,4,8} 字节（64-bit rdata/wdata）
+//   两个端口互不干扰，零延迟（ready 始终为 1）
+// ═══════════════════════════════════════════════════════════════════════════════
+#ifdef CONFIG_MEM_HARVARD
+
+HarvardMemory::HarvardMemory() {}
+
+void HarvardMemory::loadImage(const char* path) {
+    loadBinToMap(path, pmem, CONFIG_MEM_BASE);
+}
+
+uint32_t HarvardMemory::debugRead(uint32_t addr) const {
+    return mapRead(pmem, addr, 4);
+}
+
+uint32_t HarvardMemory::pmemRead(uint32_t addr, int bytes) const {
+    return mapRead(pmem, addr, bytes);
+}
+
+void HarvardMemory::pmemWrite(uint32_t addr, uint32_t data, uint8_t wmask, uint64_t cycle) {
+    mapWrite(pmem, addr, data, wmask);
+#ifdef CONFIG_MEM_WTRACE
+    for (int i = 0; i < 4; i++) {
+        if ((wmask >> i) & 1) wtrace.record(addr + i, 1, cycle);
+    }
+#else
+    (void)cycle;
+#endif
+}
+
+// 读最多 8 个字节（低位先出），bytes ∈ {1,2,4,8}，高位补零
+uint64_t HarvardMemory::readWide(uint32_t addr, int bytes) {
+    uint64_t v = 0;
+    int lo_bytes = bytes <= 4 ? bytes : 4;
+    int hi_bytes = bytes <= 4 ? 0     : bytes - 4;
+    if (in_pmem(addr)) {
+        v = pmemRead(addr, lo_bytes);
+    } else {
+        v = mmioRead(addr);
+    }
+    if (hi_bytes > 0) {
+        uint32_t hi = 0;
+        if (in_pmem(addr + 4)) {
+            hi = pmemRead(addr + 4, hi_bytes);
+        } else {
+            hi = mmioRead(addr + 4);
+        }
+        v |= ((uint64_t)hi) << 32;
+    }
+    return v;
+}
+
+// 写最多 8 个字节（按 8-bit wstrb 逐字节），跨 4B 边界拆两次
+void HarvardMemory::writeWide(uint32_t addr, uint64_t data, uint8_t wstrb, uint64_t cycle) {
+    uint8_t  wm_lo = wstrb & 0xF;
+    uint8_t  wm_hi = (wstrb >> 4) & 0xF;
+    uint32_t d_lo  = (uint32_t)(data & 0xFFFFFFFFu);
+    uint32_t d_hi  = (uint32_t)(data >> 32);
+    if (wm_lo) {
+        if (in_pmem(addr)) pmemWrite(addr, d_lo, wm_lo, cycle);
+        else               mmioWrite(addr, d_lo, wm_lo);
+    }
+    if (wm_hi) {
+        if (in_pmem(addr + 4)) pmemWrite(addr + 4, d_hi, wm_hi, cycle);
+        else                   mmioWrite(addr + 4, d_hi, wm_hi);
+    }
+}
+
+// 下降沿：处理 dmem 写
+void HarvardMemory::write(VCPU* cpu, uint64_t cycle) {
+    if (cpu->io_dmem_valid && cpu->io_dmem_wstrb != 0) {
+        uint32_t addr  = cpu->io_dmem_addr;
+        uint64_t data  = cpu->io_dmem_wdata;
+        uint8_t  wstrb = cpu->io_dmem_wstrb;
+#ifdef CONFIG_MTRACE
+        fprintf(stdout, "[mtrace] cycle=%-8llu D-WR addr=0x%08x data=0x%016llx wstrb=0x%02x size=%u\n",
+                (unsigned long long)cycle, addr, (unsigned long long)data, wstrb,
+                (unsigned)cpu->io_dmem_size);
+#endif
+        writeWide(addr, data, wstrb, cycle);
+    }
+}
+
+// 上升沿前：处理 imem 读 / dmem 读，零延迟
+void HarvardMemory::read(VCPU* cpu, uint64_t cycle) {
+    cpu->io_imem_ready = 1;
+    cpu->io_dmem_ready = 1;
+
+    // ── 指令端口（只读，size 字段告知需要多少字节） ─────────────────────────
+    if (cpu->io_imem_valid) {
+        uint32_t addr = cpu->io_imem_addr;
+        int      bytes = 1 << (cpu->io_imem_size & 0x3);
+        uint64_t rdata = readWide(addr, bytes);
+#ifdef CONFIG_MTRACE
+        fprintf(stdout, "[mtrace] cycle=%-8llu I-RD addr=0x%08x size=%d data=0x%016llx\n",
+                (unsigned long long)cycle, addr, bytes, (unsigned long long)rdata);
+#endif
+        cpu->io_imem_rdata = rdata;
+    }
+
+    // ── 数据端口读（wstrb == 0） ────────────────────────────────────────────
+    if (cpu->io_dmem_valid && cpu->io_dmem_wstrb == 0) {
+        uint32_t addr  = cpu->io_dmem_addr;
+        int      bytes = 1 << (cpu->io_dmem_size & 0x3);
+        uint64_t rdata = readWide(addr, bytes);
+#ifdef CONFIG_MTRACE
+        fprintf(stdout, "[mtrace] cycle=%-8llu D-RD addr=0x%08x size=%d data=0x%016llx\n",
+                (unsigned long long)cycle, addr, bytes, (unsigned long long)rdata);
+#endif
+        cpu->io_dmem_rdata = rdata;
+    }
+    (void)cycle;
+}
+
+#endif // CONFIG_MEM_HARVARD
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // AXI 内存实现
 // ═══════════════════════════════════════════════════════════════════════════════
 #ifdef CONFIG_MEM_AXI

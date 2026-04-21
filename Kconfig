@@ -62,6 +62,16 @@ config MEM_SIMPLE
       使用简单握手总线（valid/ready + addr/wdata/wstrb/rdata），
       每次访问单周期完成，适合简单流水线验证。
 
+config MEM_HARVARD
+    bool "哈佛分离双端口总线（变宽 64-bit）"
+    help
+      哈佛结构：CPU 顶层同时暴露指令端口（io_imem_*，只读）和
+      数据端口（io_dmem_*，读写），两者互不仲裁、零延迟。
+      数据线宽统一为 64 bit，额外携带 size 字段指示访问宽度：
+        io_*mem_size ∈ {0,1,2,3} → 1/2/4/8 字节
+      写操作由 8-bit wstrb 逐字节控制；wstrb==0 表示读。
+      适合双发射／取指一次两条指令的流水线。
+
 endchoice
 
 config MEM_AXI_BACKPRESSURE

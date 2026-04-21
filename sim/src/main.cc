@@ -71,10 +71,12 @@ int main(int argc, char* argv[]) {
         if (so_path) fprintf(stdout, "参考库:     %s\n", so_path);
         fprintf(stdout, "基地址:     0x%08x\n", base_addr);
         fprintf(stdout, "NCOMMIT:    %d\n", CONFIG_NCOMMIT);
-#ifdef CONFIG_MEM_AXI
+#if defined(CONFIG_MEM_AXI)
         fprintf(stdout, "内存接口:   AXI\n");
+#elif defined(CONFIG_MEM_HARVARD)
+        fprintf(stdout, "内存接口:   哈佛分离双端口（64-bit 变宽）\n");
 #else
-        fprintf(stdout, "内存接口:   简单总线\n");
+        fprintf(stdout, "内存接口:   简单总线（32-bit）\n");
 #endif
         fprintf(stdout, "\n");
     }
@@ -83,10 +85,12 @@ int main(int argc, char* argv[]) {
     VCPU* cpu = new VCPU;
 
     // 构建内存
-#ifdef CONFIG_MEM_AXI
-    AXIMemory* mem = new AXIMemory();
+#if defined(CONFIG_MEM_AXI)
+    MemoryBase* mem = new AXIMemory();
+#elif defined(CONFIG_MEM_HARVARD)
+    MemoryBase* mem = new HarvardMemory();
 #else
-    SimpleMemory* mem = new SimpleMemory();
+    MemoryBase* mem = new SimpleMemory();
 #endif
     mem->loadImage(img_path);
 
