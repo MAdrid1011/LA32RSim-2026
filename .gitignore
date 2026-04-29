@@ -44,6 +44,7 @@
 build/
 include/generated/
 .config
+.config.old
 *.vcd
 waveform.vcd
 
