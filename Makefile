@@ -34,7 +34,7 @@ REF_BIN   := $(BUILD_DIR)/ref-sim
 SIM_BIN   := $(BUILD_DIR)/la32r-sim
 
 # ── Kconfig 工具 ──────────────────────────────────────────────────────────────
-MENUCONFIG := python3.12 -m menuconfig
+MENUCONFIG := python3 -m menuconfig
 
 .PHONY: menuconfig
 menuconfig:
@@ -43,10 +43,9 @@ menuconfig:
 .PHONY: defconfig
 defconfig:
 	@echo "使用默认配置"
-	@KCONFIG_CONFIG=$(DOTCONFIG) python3.12 -c "\
+	@KCONFIG_CONFIG=$(DOTCONFIG) python3 -c "\
 import kconfiglib, sys; \
 kconf = kconfiglib.Kconfig('$(WORK_DIR)/Kconfig'); \
-kconf.load_config($(WORK_DIR)/Kconfig); \
 kconf.write_config('$(DOTCONFIG)')"
 	@echo "已生成 .config"
 
