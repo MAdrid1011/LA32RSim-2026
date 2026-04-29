@@ -6,6 +6,16 @@
 #include <vector>
 #include <stdexcept>
 
+// 当作为 difftest 动态库使用时（未定义 REF_STANDALONE），
+// 参考模型必须完全静默，避免与 DUT 串口/日志重复输出。
+#ifdef REF_STANDALONE
+#define REF_ERR(...)  fprintf(stderr, __VA_ARGS__)
+#define REF_UART(c)   do { putchar(c); fflush(stdout); } while (0)
+#else
+#define REF_ERR(...)  do { } while (0)
+#define REF_UART(c)   do { } while (0)
+#endif
+
 // 内存访问类型
 #define MEM_FETCH  1u
 #define MEM_LOAD   2u
@@ -19,7 +29,7 @@ Simulator::Simulator(uint32_t reset_vector) : pc(reset_vector) {
 void Simulator::loadImage(const char* path) {
     std::ifstream f(path, std::ios::binary | std::ios::ate);
     if (!f) {
-        fprintf(stderr, "[ref] 无法打开镜像文件: %s\n", path);
+        REF_ERR("[ref] 无法打开镜像文件: %s\n", path);
         exit(1);
     }
     size_t sz = f.tellg();
@@ -186,7 +196,7 @@ void Simulator::memWrite(uint32_t vaddr, uint32_t data, uint8_t wmask) {
         for (int i = 0; i < 4; i++) {
             if ((wmask >> i) & 1) {
                 uint8_t c = (data >> (i * 8)) & 0xFF;
-                if (c) { putchar(c); fflush(stdout); }
+                if (c) REF_UART(c);
             }
         }
         return;
@@ -323,7 +333,7 @@ void Simulator::execute(uint32_t inst) {
             exit_code = (int)rf[4];
             return;
         }
-        fprintf(stderr, "[ref] BREAK %u at pc=0x%08x (trap)\n", code, pc);
+        REF_ERR("[ref] BREAK %u at pc=0x%08x (trap)\n", code, pc);
         state = SIM_END;
         exit_code = (int)code;
         return;
@@ -433,7 +443,7 @@ void Simulator::execute(uint32_t inst) {
         case 0xA8: setRf(rd,(uint8_t) memRead(addr,1)); break; // LD.BU
         case 0xA9: setRf(rd,(uint16_t)memRead(addr,2)); break; // LD.HU
         default:
-            fprintf(stderr,"[ref] 未知 load/store op10=0x%02x pc=0x%08x\n",op10,pc);
+            REF_ERR("[ref] 未知 load/store op10=0x%02x pc=0x%08x\n", op10, pc);
             raiseException(ECODE_INE, 0);
         }
         pc = next_pc; return;
@@ -498,7 +508,7 @@ void Simulator::execute(uint32_t inst) {
     case OP10_MASKEQZ: setRf(rd, rk_v==0?rj_v:0);                                break;
     case OP10_MASKNEZ: setRf(rd, rk_v!=0?rj_v:0);                                break;
     default:
-        fprintf(stderr, "[ref] 未识别指令 0x%08x pc=0x%08x (op6=%x op10=%x op17=%x)\n",
+        REF_ERR("[ref] 未识别指令 0x%08x pc=0x%08x (op6=%x op10=%x op17=%x)\n",
                 inst, pc, op6, op10, op17);
         raiseException(ECODE_INE, 0);
     }
